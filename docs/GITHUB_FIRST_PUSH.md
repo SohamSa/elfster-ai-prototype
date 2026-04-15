@@ -2,6 +2,27 @@
 
 Your project folder is already a **git** repo with an **initial commit** on branch `main`. `.env` is **not** tracked (see `.gitignore`). Generated `eval/latest-report.json` is ignored.
 
+## 0. Automated (one command) — recommended
+
+1. Create a **Personal Access Token** with `repo` scope: [GitHub tokens](https://github.com/settings/tokens).
+2. Add to your **local** `.env` (never commit this file):
+
+   ```env
+   GITHUB_TOKEN=ghp_your_token_here
+   GITHUB_OWNER=your-github-username
+   GITHUB_REPO=elfster-ai-prototype
+   ```
+
+   `GITHUB_REPO` is optional; it defaults to `elfster-ai-prototype`.
+
+3. From the project root:
+
+   ```bash
+   npm run github:publish
+   ```
+
+This script calls the GitHub API to **create the repository** if it does not exist, then **pushes `main`**, then removes the token from the saved `origin` URL.
+
 ## 1. Create an empty repository on GitHub
 
 1. Open [https://github.com/new](https://github.com/new).

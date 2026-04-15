@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "eval": "tsx eval/run.ts",
     "eval:strict": "tsx eval/run.ts --strict",
+    "github:publish": "node scripts/publish-github.mjs",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
