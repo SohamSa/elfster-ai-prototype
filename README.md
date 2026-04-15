@@ -90,7 +90,7 @@ Example payload for `/api/seo/brief`:
 
 Your app on `localhost:3000` only runs on your computer. To give **planet Earth** a normal `https://...` link, host it on the internet. For this Next.js stack, **Vercel** is the path of least resistance (same company family as Next.js, zero server config, HTTPS included).
 
-If this repo is only on your machine so far, follow **`docs/GITHUB_FIRST_PUSH.md`** once to create the GitHub remote and `git push`.
+If this repo is only on your machine so far, either run **`npm run github:publish`** (after `GITHUB_TOKEN` + `GITHUB_OWNER` in `.env`) or follow **`docs/GITHUB_FIRST_PUSH.md`** for manual steps.
 
 ### 1. Put the code on GitHub (or GitLab / Bitbucket)
 
