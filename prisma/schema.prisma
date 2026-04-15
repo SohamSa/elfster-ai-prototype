@@ -1,0 +1,55 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SeoBriefStatus {
+  draft
+  review
+  approved
+  published
+}
+
+model Gift {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  priceCents  Int
+  tags        String[] @default([])
+  audience    String?
+  occasion    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([priceCents])
+}
+
+model SavedSeoBrief {
+  id           String   @id @default(cuid())
+  query        String
+  locale       String
+  audienceHint String?
+  status       SeoBriefStatus @default(draft)
+  owner        String?
+  reviewerNotes String?
+  briefJson    Json
+  qualityJson  Json?
+  publishedAt  DateTime?
+  impressions       Int @default(0)
+  clicks            Int @default(0)
+  conversions       Int @default(0)
+  refreshPriority   Int @default(0)
+  seasonalTag       String?
+  metricsUpdatedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([query])
+  @@index([status])
+  @@index([refreshPriority])
+}
