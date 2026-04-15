@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SeoBriefForm } from "@/components/seo-brief-form";
 
 export default function SeoPage() {
@@ -11,8 +12,8 @@ export default function SeoPage() {
       </p>
       <SeoBriefForm />
       <p className="footer-links">
-        <a href="/">Gift suggestion app</a>
-        <a href="/api/seo/brief">SEO brief API</a>
+        <Link href="/">Gift suggestion app</Link>
+        <Link href="/api/seo/brief">SEO brief API</Link>
       </p>
     </main>
   );

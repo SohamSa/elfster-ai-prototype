@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   SavedSeoBriefItem,
   SavedSeoBriefListResponse,
@@ -87,7 +87,7 @@ export function SeoBriefForm() {
 
   const selectedSaved = history.find((x) => x.id === selectedSavedId) ?? null;
 
-  async function loadHistory() {
+  const loadHistory = useCallback(async function loadHistoryImpl() {
     setHistoryLoading(true);
     try {
       const params = new URLSearchParams();
@@ -104,11 +104,11 @@ export function SeoBriefForm() {
     } finally {
       setHistoryLoading(false);
     }
-  }
+  }, [historyQueryFilter, historyStatusFilter]);
 
   useEffect(() => {
     void loadHistory();
-  }, [historyStatusFilter, historyQueryFilter]);
+  }, [loadHistory]);
 
   useEffect(() => {
     if (!selectedSavedId) return;
