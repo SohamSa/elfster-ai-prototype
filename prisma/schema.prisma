@@ -53,3 +53,21 @@ model SavedSeoBrief {
   @@index([status])
   @@index([refreshPriority])
 }
+
+model AiGeneration {
+  id        String   @id @default(cuid())
+  route     String
+  query     String
+  mode      String
+  status    String
+  model     String?
+  inputJson Json?
+  outputJson Json?
+  error     String?
+  latencyMs Int?
+  createdAt DateTime @default(now())
+
+  @@index([route, createdAt])
+  @@index([query])
+  @@index([status])
+}

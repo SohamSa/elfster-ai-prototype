@@ -1,6 +1,14 @@
 # Elfster AI prototype
 
-Locked stack: **TypeScript**, **Next.js (App Router)**, **Vercel**, **Vercel AI SDK**, **OpenAI GPT-4o**, **Neon Postgres + Prisma**, **Upstash Redis** (optional rate limit), secrets in **Vercel** (production) and a **gitignored `.env`** locally.
+Locked stack: **TypeScript**, **Next.js (App Router)**, **Vercel**, **Vercel AI SDK**, **OpenAI GPT-4o**, **Neon Postgres + Prisma**, **Upstash Redis** (optional rate limit/cache), secrets in **Vercel** (production) and a **gitignored `.env`** locally.
+
+This MVP now highlights five GenAI system design concepts:
+
+- **Request flow architecture** - `/api/suggest` and `/api/seo/brief` clearly validate input, run AI orchestration, use database grounding, and return structured JSON.
+- **AI orchestration layer** - live OpenAI calls and `MOCK_AI_MODE` are centralized in `src/lib/ai/service.ts`; prompt templates live in `src/lib/ai/prompts/`.
+- **Database design and persistence** - Prisma stores catalog gifts, saved SEO briefs, and best-effort `AiGeneration` records for generated outputs.
+- **Scalability, latency, and cost control** - Upstash hooks provide optional rate limiting and short-lived caching when Redis is configured; the app still runs without Redis.
+- **Evaluation and reliability** - Zod validates inputs and structured AI outputs; `npm run eval:fixtures` runs offline fixture checks without spending OpenAI credits.
 
 ## Prerequisites
 
@@ -10,32 +18,29 @@ Locked stack: **TypeScript**, **Next.js (App Router)**, **Vercel**, **Vercel AI 
 ## Local setup
 
 1. Install dependencies:
-
    ```bash
    npm install
    ```
 
 2. Copy environment template to **`.env`** in the project root and fill in real values:
-
    ```bash
    copy .env.example .env
    ```
-
    On macOS/Linux use `cp .env.example .env`.
 
    **Why `.env`:** the Prisma CLI (`db push`, `migrate`, `seed`) loads **`.env`** by default. It does **not** read `.env.local`, so putting `DATABASE_URL` only in `.env.local` causes `P1012 Environment variable not found: DATABASE_URL`. Next.js also loads `.env`, so one file works for both.
 
    **Upstash:** optional. Leave `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` empty until you create a Redis database in Upstash; the app runs without rate limiting.
 
-3. Push the Prisma schema and seed sample gifts (requires `DATABASE_URL`):
+   **Mock AI:** set `MOCK_AI_MODE=true` for local development or fixture evals when you do not want to spend OpenAI API credits.
 
+3. Push the Prisma schema and seed sample gifts (requires `DATABASE_URL`):
    ```bash
    npx prisma db push
    npm run db:seed
    ```
 
 4. Start the dev server:
-
    ```bash
    npm run dev
    ```
@@ -43,7 +48,6 @@ Locked stack: **TypeScript**, **Next.js (App Router)**, **Vercel**, **Vercel AI 
 5. Open [http://localhost:3000](http://localhost:3000). Health check: [http://localhost:3000/api/health](http://localhost:3000/api/health).
 
 6. Optional quality checks:
-
    ```bash
    npm run lint
    npm run typecheck
@@ -51,14 +55,13 @@ Locked stack: **TypeScript**, **Next.js (App Router)**, **Vercel**, **Vercel AI 
    ```
 
 7. Optional model evaluation (A/B, statistics, multivariate facets):
-
    ```bash
+   npm run eval:fixtures
    copy eval\queries.template.jsonl eval\queries.jsonl
    npm run eval
    npm run eval:strict
    ```
-
-   This writes `eval/latest-report.json` with pass rates, **Wilson 95% intervals**, weighted scores, **McNemar paired comparison** when two models are configured, latency distribution, and facet tables by case metadata. See `eval/README.md` for environment variables (`EVAL_OK_THRESHOLD`, `EVAL_GATE_MIN_PASS_RATE`, `EVAL_EXPERIMENT_ID`, and more).
+   `eval:fixtures` is offline and free. The HTTP eval commands can call live OpenAI unless your running app has `MOCK_AI_MODE=true`. They write `eval/latest-report.json` with pass rates, **Wilson 95% intervals**, weighted scores, **McNemar paired comparison** when two models are configured, latency distribution, and facet tables by case metadata. See `eval/README.md` for environment variables (`EVAL_OK_THRESHOLD`, `EVAL_GATE_MIN_PASS_RATE`, `EVAL_EXPERIMENT_ID`, and more).
 
 ## Upgraded v2 endpoints
 
@@ -84,7 +87,7 @@ Example payload for `/api/seo/brief`:
 - `docs/` - product and task docs
 - `prisma/` - schema + seed
 - `src/app/` - UI and route handlers (`/api/suggest`, `/api/health`, `/api/seo/brief`, `/api/seo/briefs`)
-- `src/lib/` - Prisma client, Redis helper, AI model wiring, Zod schemas, SEO problem maps
+- `src/lib/` - Prisma client, Redis helper, centralized AI service, prompt templates, Zod schemas, SEO problem maps
 
 ## Public deploy (Vercel): share a link with anyone
 
@@ -97,15 +100,12 @@ If this repo is only on your machine so far, either run **`npm run github:publis
 Vercel deploys from a **git** remote.
 
 - If the folder is not a git repo yet:
-
   ```bash
   git init
   git add .
   git commit -m "Initial prototype"
   ```
-
 - Create a new empty repository on **GitHub**, then connect and push (replace `YOUR_USER` / `YOUR_REPO`):
-
   ```bash
   git remote add origin https://github.com/YOUR_USER/YOUR_REPO.git
   git branch -M main
@@ -126,14 +126,16 @@ Vercel deploys from a **git** remote.
 
 Add these for **Production** (and Preview if you want preview deployments to work too):
 
-| Name | What to paste |
-|------|----------------|
-| `DATABASE_URL` | Your **Neon** Postgres URL. Prefer the **pooled** connection string from the Neon dashboard (serverless-friendly). Must include `?sslmode=require` if Neon shows it. |
-| `OPENAI_API_KEY` | Your OpenAI **secret** key (`sk-...`). Billing is usage-based; a public app will spend money when people use AI features. |
-| `OPENAI_SUGGESTION_MODEL` | Optional, e.g. `gpt-4o-mini` to control cost. |
-| `OPENAI_SEO_MODEL` | Optional, e.g. `gpt-4o-mini`. |
-| `UPSTASH_REDIS_REST_URL` | Optional but **recommended** for a public link so rate limiting can reduce abuse. |
-| `UPSTASH_REDIS_REST_TOKEN` | Optional; pair with Upstash URL. |
+
+| Name                       | What to paste                                                                                                                                                        |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`             | Your **Neon** Postgres URL. Prefer the **pooled** connection string from the Neon dashboard (serverless-friendly). Must include `?sslmode=require` if Neon shows it. |
+| `OPENAI_API_KEY`           | Your OpenAI **secret** key (`sk-...`). Billing is usage-based; a public app will spend money when people use AI features.                                            |
+| `OPENAI_SUGGESTION_MODEL`  | Optional, e.g. `gpt-4o-mini` to control cost.                                                                                                                        |
+| `OPENAI_SEO_MODEL`         | Optional, e.g. `gpt-4o-mini`.                                                                                                                                        |
+| `UPSTASH_REDIS_REST_URL`   | Optional but **recommended** for a public link so rate limiting can reduce abuse.                                                                                    |
+| `UPSTASH_REDIS_REST_TOKEN` | Optional; pair with Upstash URL.                                                                                                                                     |
+
 
 Save, then trigger **Redeploy** (Deployments → … on latest → Redeploy) so the new env vars apply.
 
@@ -179,3 +181,4 @@ Extra options: use **Vercel Deployment Protection** or keep the repo private and
 
 - Point `EVAL_BASE_URL` at your public URL if you run `npm run eval` against production (careful: costs).
 - Continue product work in `docs/TASKS.md` and `docs/SEO_DISCOVERY_TASKS.md`.
+

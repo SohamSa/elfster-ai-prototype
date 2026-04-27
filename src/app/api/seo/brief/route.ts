@@ -1,28 +1,23 @@
-import { generateObject } from "ai";
+import { headers } from "next/headers";
 import { NextResponse } from "next/server";
+import { AiServiceError, generateSeoBrief, getAiConfigurationError } from "@/lib/ai/service";
+import { recordAiGeneration } from "@/lib/ai/generation-log";
+import {
+  checkOptionalRateLimit,
+  jsonCacheKey,
+  readOptionalJsonCache,
+  writeOptionalJsonCache,
+} from "@/lib/ai/traffic-control";
 import { businessProblems } from "@/lib/seo/business-problems";
 import { getStructuralQualityFlags, normalizeStructuralBrief } from "@/lib/seo/brief-fallback";
-import { getSeoModel } from "@/lib/ai/model";
-import {
-  looksLikeRealOpenAiKey,
-  openAiFriendlyError,
-  parseAndValidateBody,
-} from "@/lib/ai/guards";
-import { seoBriefRequestSchema, seoBriefSchema } from "@/lib/schemas/seo-discovery";
+import { parseAndValidateBody } from "@/lib/ai/guards";
+import { seoBriefRequestSchema } from "@/lib/schemas/seo-discovery";
 
 export async function POST(req: Request) {
-  const openAiKey = process.env.OPENAI_API_KEY?.trim() ?? "";
-  if (!openAiKey) {
-    return NextResponse.json(
-      { error: "Missing OPENAI_API_KEY. Add it to .env (see .env.example)." },
-      { status: 500 },
-    );
-  }
-  if (!looksLikeRealOpenAiKey(openAiKey)) {
-    return NextResponse.json(
-      { error: "OPENAI_API_KEY looks invalid or placeholder. Update .env with a real key." },
-      { status: 500 },
-    );
+  const startedAt = Date.now();
+  const aiConfigError = getAiConfigurationError();
+  if (aiConfigError) {
+    return NextResponse.json({ error: aiConfigError.message }, { status: aiConfigError.status });
   }
 
   const body = await req.json().catch(() => null);
@@ -31,47 +26,65 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
-  const { query, locale, audienceHint } = parsed.data;
-  const model = getSeoModel(parsed.data.modelOverride);
+  const { query, audienceHint } = parsed.data;
+  const locale = parsed.data.locale ?? "en-US";
+  const modelLabel = parsed.data.modelOverride ?? process.env.OPENAI_SEO_MODEL ?? process.env.OPENAI_SUGGESTION_MODEL ?? "gpt-4o";
 
-  const baseSystem = `You generate business-grade SEO/discovery page briefs for an AI gifting platform.
-Write clear, practical copy in plain language.
-Explicitly optimize for these 10 business problems:
-${businessProblems.map((p, i) => `${i + 1}. ${p.name}`).join("\n")}
-Rules:
-- Keep the title under 65 characters.
-- Keep the metaDescription between 130 and 160 characters.
-- Include at least 4 sections, each with a heading and summary.
-- Include at least 3 FAQs with specific answers.
-- Sections should be useful and skimmable, not generic.
-- Include conversionNudges that can increase click-through and action.
-- Include freshnessNotes for how this page can stay current.
-- Estimate duplicateRisk honestly based on how broad the query is.
-- internalLinkAnchors should sound like natural anchor text.
-- relatedQueries should be long-tail and realistic.
-`;
+  const headerList = await headers();
+  const forwarded = headerList.get("x-forwarded-for");
+  const ip = forwarded?.split(",")[0]?.trim() ?? headerList.get("x-real-ip") ?? "anonymous";
+  const rate = await checkOptionalRateLimit({
+    key: `ratelimit:seo-brief:${ip}`,
+    limit: 30,
+    windowSeconds: 3600,
+  });
+  if (!rate.ok) {
+    return NextResponse.json({ error: rate.message }, { status: rate.status });
+  }
+
+  const cacheKey = jsonCacheKey("cache:seo-brief:v1", {
+    query,
+    locale,
+    audienceHint,
+    modelLabel,
+  });
+  const cached = await readOptionalJsonCache(cacheKey);
+  if (cached) {
+    return NextResponse.json(cached);
+  }
 
   let systemExtra = "";
 
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const result = await generateObject({
-        model,
-        schema: seoBriefSchema,
-        system: baseSystem + systemExtra,
-        prompt: JSON.stringify({ query, locale, audienceHint }),
+      // Step 1: generate a structured brief; the AI service handles live vs mock mode.
+      let brief = await generateSeoBrief({
+        query,
+        locale,
+        audienceHint,
+        modelOverride: parsed.data.modelOverride,
+        systemExtra,
       });
-
-      let brief = result.object;
       const structural = getStructuralQualityFlags(brief);
 
       if (structural.length === 0) {
-        return NextResponse.json({
+        const response = {
           ok: true,
           input: { query, locale, audienceHint },
           brief,
           businessProblemsCovered: businessProblems.map((p) => p.name),
+        };
+        await recordAiGeneration({
+          route: "/api/seo/brief",
+          query,
+          status: "success",
+          model: modelLabel,
+          inputJson: parsed.data,
+          outputJson: response,
+          latencyMs: Date.now() - startedAt,
         });
+        await writeOptionalJsonCache(cacheKey, response, 600);
+        return NextResponse.json(response);
       }
 
       if (attempt === 0) {
@@ -80,26 +93,55 @@ Rules:
       }
 
       const structuralWarnings = structural;
+      // Step 2: if the model is close but incomplete, fill structural gaps deterministically.
       brief = normalizeStructuralBrief(brief, query);
 
-      return NextResponse.json({
+      const response = {
         ok: true,
         input: { query, locale, audienceHint },
         brief,
         businessProblemsCovered: businessProblems.map((p) => p.name),
         incompleteFallback: true,
         structuralWarnings,
+      };
+      await recordAiGeneration({
+        route: "/api/seo/brief",
+        query,
+        status: "success",
+        model: modelLabel,
+        inputJson: parsed.data,
+        outputJson: response,
+        latencyMs: Date.now() - startedAt,
       });
+      await writeOptionalJsonCache(cacheKey, response, 600);
+      return NextResponse.json(response);
     } catch (error) {
       if (attempt === 0) {
         systemExtra =
           "\n\nYour previous response was invalid or could not be parsed. Output valid JSON matching the schema with all required fields.";
         continue;
       }
-      const mapped = openAiFriendlyError(error);
-      if (mapped) {
-        return NextResponse.json({ error: mapped.message }, { status: mapped.status });
+      if (error instanceof AiServiceError) {
+        await recordAiGeneration({
+          route: "/api/seo/brief",
+          query,
+          status: "error",
+          model: modelLabel,
+          inputJson: parsed.data,
+          error: error.message,
+          latencyMs: Date.now() - startedAt,
+        });
+        return NextResponse.json({ error: error.message }, { status: error.status });
       }
+      await recordAiGeneration({
+        route: "/api/seo/brief",
+        query,
+        status: "error",
+        model: modelLabel,
+        inputJson: parsed.data,
+        error: error instanceof Error ? error.message : "Unknown SEO brief error",
+        latencyMs: Date.now() - startedAt,
+      });
       return NextResponse.json(
         { error: "SEO brief generation failed. Please retry in a moment." },
         { status: 500 },

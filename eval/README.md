@@ -12,15 +12,19 @@ It is **not** a substitute for a full ML accuracy study: there is no held-out hu
 | `stats.ts` | Wilson 95% interval, latency mean/std/median, McNemar paired test. |
 | `heuristics.ts` | Zero-shot **lexical recall** of query tokens into outputs (cheap "accuracy proxy"). |
 | `run.ts` | Orchestration, multivariate aggregation, `latest-report.json`. |
+| `mock-fixtures.ts` | Offline checks for mock AI mode, schemas, and prompt/service orchestration. |
 | `queries.template.jsonl` | Large, metadata-rich suite (copy to `queries.jsonl`). |
 | `queries.jsonl` | Active suite (gitignored if you choose; this repo ships a default copy). |
 | `latest-report.json` | Generated report. |
 
 ## Run
 
-1. `npm run dev` (or set `EVAL_BASE_URL` to a deployed URL).
-2. `npm run eval` — default thresholds are **stricter** than early prototypes (`EVAL_OK_THRESHOLD` defaults to **0.85** per case pass).
-3. `npm run eval:strict` — adds extra SEO density checks, duplicate-risk pressure, lexical floors, and suggest title hygiene.
+1. `npm run eval:fixtures` — free/offline fixture checks; no OpenAI call.
+2. `npm run dev` (or set `EVAL_BASE_URL` to a deployed URL).
+3. `npm run eval` — default thresholds are **stricter** than early prototypes (`EVAL_OK_THRESHOLD` defaults to **0.85** per case pass).
+4. `npm run eval:strict` — adds extra SEO density checks, duplicate-risk pressure, lexical floors, and suggest title hygiene.
+
+Set `MOCK_AI_MODE=true` on the running app if you want the HTTP evals to avoid live model spend during development.
 
 If `eval/queries.jsonl` is missing, the runner falls back to `queries.template.jsonl`.
 
